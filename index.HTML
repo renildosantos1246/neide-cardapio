@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>📋 Cardápio Editável</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f2f2f2;
+  padding: 20px;
+}
+
+h1 { margin-bottom: 10px; }
+
+input, button {
+  padding: 8px;
+  font-size: 14px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  margin-top: 15px;
+  table-layout: fixed;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 8px;
+}
+
+th {
+  background: #333;
+  color: #fff;
+}
+
+/* COLUNAS */
+th:nth-child(1), td:nth-child(1) { width: 65%; }
+th:nth-child(2), td:nth-child(2) { width: 15%; }
+th:nth-child(3), td:nth-child(3) { width: 20%; }
+
+/* INPUTS */
+td input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+button {
+  cursor: pointer;
+}
+
+.btn-edit {
+  background: #1565c0;
+  color: #fff;
+  border: none;
+  padding: 6px 10px;
+}
+
+.btn-save {
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  padding: 6px 10px;
+}
+
+.btn-del {
+  background: #c62828;
+  color: #fff;
+  border: none;
+  padding: 6px 10px;
+  margin-left: 5px;
+}
+
+.add-area, .search-area {
+  background: #fff;
+  padding: 10px;
+  margin-top: 10px;
+  border: 1px solid #ccc;
+}
+
+.search-area input {
+  width: 70%;
+  padding: 6px;
+}
+
+.search-area button {
+  background: #1565c0;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h1>📋 Cardápio</h1>
+
+<input type="file" id="excelFile" accept=".xlsx">
+<button onclick="exportarExcel()">📤 Exportar Excel</button>
+
+<div class="search-area">
+  <strong>🔎 Pesquisa</strong><br>
+  <input type="text" id="pesquisa" placeholder="Pesquisar prato...">
+  <button onclick="pesquisar()">Pesquisar</button>
+</div>
+
+<div class="add-area">
+  <strong>➕ Novo Prato</strong><br>
+  <input type="text" id="novoNome" placeholder="Nome do prato">
+  <input type="number" step="0.01" id="novoPreco" placeholder="Preço">
+  <button onclick="adicionar()">Adicionar</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Prato</th>
+      <th>Preço (R$)</th>
+      <th>Ações</th>
+    </tr>
+  </thead>
+  <tbody id="tabela"></tbody>
+</table>
+
+<script>
+let cardapio = JSON.parse(localStorage.getItem("cardapio")) || [];
+
+const tabela = document.getElementById("tabela");
+const excelInput = document.getElementById("excelFile");
+
+renderizar();
+
+/* IMPORTAR EXCEL */
+excelInput.addEventListener("change", function(e) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const data = new Uint8Array(e.target.result);
+    const wb = XLSX.read(data, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet);
+
+    cardapio = json.map(l => ({
+      nome: String(l.LISTA || ""),
+      preco: Number(l.PREÇO || 0)
+    }));
+
+    salvar();
+    renderizar();
+  };
+  reader.readAsArrayBuffer(e.target.files[0]);
+});
+
+/* EXPORTAR EXCEL */
+function exportarExcel() {
+  const ws = XLSX.utils.json_to_sheet(cardapio);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Cardápio");
+  XLSX.writeFile(wb, "cardapio.xlsx");
+}
+
+/* RENDER */
+function renderizar() {
+  tabela.innerHTML = "";
+
+  cardapio.forEach((item, i) => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td>
+        <input type="text" value="${item.nome}" disabled id="nome-${i}">
+      </td>
+      <td>
+        <input type="number" step="0.01" value="${item.preco}" disabled id="preco-${i}">
+      </td>
+      <td>
+        <button class="btn-edit" id="btn-${i}" onclick="editar(${i})">✏️ Editar</button>
+        <button class="btn-del" onclick="excluir(${i})">🗑️ Excluir</button>
+      </td>
+    `;
+
+    tabela.appendChild(tr);
+  });
+}
+
+/* EDITAR / SALVAR */
+function editar(i) {
+  const nome = document.getElementById(`nome-${i}`);
+  const preco = document.getElementById(`preco-${i}`);
+  const btn = document.getElementById(`btn-${i}`);
+
+  if (btn.innerText.includes("Editar")) {
+    nome.disabled = false;
+    preco.disabled = false;
+    btn.innerText = "💾 Salvar";
+    btn.className = "btn-save";
+  } else {
+    cardapio[i].nome = nome.value;
+    cardapio[i].preco = Number(preco.value);
+
+    nome.disabled = true;
+    preco.disabled = true;
+
+    salvar();
+    btn.innerText = "✏️ Editar";
+    btn.className = "btn-edit";
+  }
+}
+
+/* CRUD */
+function excluir(i) {
+  if (confirm("Excluir este prato?")) {
+    cardapio.splice(i, 1);
+    salvar();
+    renderizar();
+  }
+}
+
+function adicionar() {
+  const nome = document.getElementById("novoNome").value.trim();
+  const preco = document.getElementById("novoPreco").value;
+
+  if (!nome || !preco) {
+    alert("Preencha nome e preço");
+    return;
+  }
+
+  if (Number(preco) <= 0) {
+    alert("O preço deve ser maior que zero");
+    return;
+  }
+
+  if (cardapio.some(p => p.nome.toLowerCase() === nome.toLowerCase())) {
+    alert("Esse prato já está no cardápio!");
+    return;
+  }
+
+  cardapio.push({ nome, preco: Number(preco) });
+
+  document.getElementById("novoNome").value = "";
+  document.getElementById("novoPreco").value = "";
+
+  salvar();
+  renderizar();
+}
+
+/* SALVAR */
+function salvar() {
+  localStorage.setItem("cardapio", JSON.stringify(cardapio));
+}
+
+/* PESQUISA FLEXÍVEL */
+function pesquisar() {
+  const termo = document.getElementById("pesquisa").value
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const linhas = tabela.getElementsByTagName("tr");
+
+  for (let i = 0; i < linhas.length; i++) {
+    const nomePrato = linhas[i].querySelector("td input").value
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (nomePrato.includes(termo)) {
+      linhas[i].style.display = "";
+    } else {
+      linhas[i].style.display = "none";
+    }
+  }
+}
+
+/* PESQUISA EM TEMPO REAL */
+document.getElementById("pesquisa").addEventListener("keyup", pesquisar);
+
+/* GARANTIA AO FECHAR */
+window.addEventListener("beforeunload", salvar);
+</script>
+
+</body>
+</html>
